@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FocusGuard Dashboard</title>
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎯 FocusGuard Dashboard</h1>
+            <p class="subtitle">Vision-Based Study Time Enforcement System</p>
+        </header>
+
+        <div class="dashboard-grid">
+            <!-- Session Setup Card -->
+            <div class="card session-setup" id="sessionSetupCard">
+                <h2>📚 Study Session Setup</h2>
+                <div class="form-group">
+                    <label for="studyDuration">Study Duration (minutes):</label>
+                    <input type="number" id="studyDuration" min="1" max="480" value="120" placeholder="120">
+                </div>
+                <div class="form-group">
+                    <label for="sessionName">Session Name:</label>
+                    <input type="text" id="sessionName" placeholder="Mathematics Study" maxlength="50">
+                </div>
+                <button id="startSession" class="btn btn-primary" onclick="startSessionDirect()">Start Focus Session</button>
+                <button onclick="testAPI()" class="btn" style="background: #28a745; color: white; margin-top: 10px;">Test API</button>
+            </div>
+
+            <!-- Current Session Status -->
+            <div class="card session-status" id="sessionStatusCard">
+                <h2>⏱️ Current Session</h2>
+                <div class="status-display">
+                    <div class="timer-display">
+                        <span id="currentTime">00:00:00</span>
+                        <span class="timer-label">Elapsed Time</span>
+                    </div>
+                    <div class="remaining-time">
+                        <span id="remainingTime">00:00:00</span>
+                        <span class="timer-label">Remaining Time</span>
+                    </div>
+                </div>
+                <div class="session-info">
+                    <p><strong>Session:</strong> <span id="currentSessionName">No active session</span></p>
+                    <p><strong>Status:</strong> <span id="sessionStatus" class="status-idle">Idle</span></p>
+                    <p><strong>Duration:</strong> <span id="sessionDuration">0 minutes</span></p>
+                    <p><strong>Progress:</strong> <span id="sessionProgress">0%</span></p>
+                </div>
+                <div class="session-controls">
+                    <button id="pauseSession" class="btn btn-warning" disabled onclick="pauseSessionDirect()">Pause</button>
+                    <button id="stopSession" class="btn btn-danger" disabled onclick="stopSessionDirect()">Stop Session</button>
+                    <button id="newSession" class="btn btn-primary" onclick="startNewSession()" style="display: none;">New Session</button>
+                </div>
+            </div>
+
+            <!-- Vision Status -->
+            <div class="card vision-status">
+                <h2>👁️ Vision Monitoring</h2>
+                <div class="vision-indicators">
+                    <div class="indicator">
+                        <span class="indicator-dot" id="cameraStatus"></span>
+                        <span>Camera Status</span>
+                    </div>
+                    <div class="indicator">
+                        <span class="indicator-dot" id="faceDetection"></span>
+                        <span>Face Detection</span>
+                    </div>
+                    <div class="indicator">
+                        <span class="indicator-dot" id="postureStatus"></span>
+                        <span>Study Posture</span>
+                    </div>
+                    <div class="indicator">
+                        <span class="indicator-dot" id="attentionStatus"></span>
+                        <span>Attention Level</span>
+                    </div>
+                </div>
+                <div class="camera-preview">
+                    <video id="cameraFeed" class="camera-feed" autoplay muted playsinline>
+                        Your browser does not support video
+                    </video>
+                    <div class="camera-controls">
+                        <button onclick="startCameraFeed()" class="btn" style="background: #28a745; color: white; padding: 8px 16px; font-size: 12px;">Start Camera</button>
+                        <button onclick="stopCameraFeed()" class="btn" style="background: #dc3545; color: white; padding: 8px 16px; font-size: 12px;">Stop Camera</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="card statistics">
+                <h2>📊 Today's Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-value" id="totalStudyTime">0h 0m</span>
+                        <span class="stat-label">Total Study Time</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="sessionsCompleted">0</span>
+                        <span class="stat-label">Sessions Completed</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="focusScore">0%</span>
+                        <span class="stat-label">Focus Score</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="distractions">0</span>
+                        <span class="stat-label">Distractions</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts & Notifications -->
+            <div class="card alerts">
+                <h2>🔔 Alerts & Notifications</h2>
+                <div class="current-alerts" id="currentAlerts">
+                    <!-- Dynamic alerts will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let sessionActive = false;
+        let isPaused = false;
+        let elapsedTime = 0;
+        let totalSeconds = 0;
+        let totalDuration = 0;
+        let currentSession = null;
+        
+        // Camera variables
+        let cameraStream = null;
+        let cameraVideo = null;
+        let faceDetectionActive = false;
+        let faceDetectionInterval = null;
+        
+        // Card management functions
+        function hideSetupCard() {
+            const setupCard = document.getElementById('sessionSetupCard');
+            if (setupCard) {
+                setupCard.style.display = 'none';
+                console.log('✅ Setup card hidden');
+            }
+        }
+        
+        function showSetupCard() {
+            const setupCard = document.getElementById('sessionSetupCard');
+            if (setupCard) {
+                setupCard.style.display = 'block';
+                console.log('✅ Setup card shown');
+            }
+        }
+        
+        function startNewSession() {
+            // Reset everything
+            sessionActive = false;
+            isPaused = false;
+            elapsedTime = 0;
+            totalSeconds = 0;
+            
+            if (window.sessionTimer) {
+                clearInterval(window.sessionTimer);
+            }
+            
+            // Show setup card again
+            showSetupCard();
+            
+            // Reset session display
+            resetSessionDisplay();
+            
+            console.log('✅ Ready for new session');
+            showAlert('Ready for new session! 🎯', 'success');
+        }
+        
+        function resetSessionDisplay() {
+            document.getElementById('currentSessionName').textContent = 'No active session';
+            document.getElementById('sessionStatus').textContent = 'Idle';
+            document.getElementById('sessionStatus').className = 'status-idle';
+            document.getElementById('sessionDuration').textContent = '0 minutes';
+            document.getElementById('sessionProgress').textContent = '0%';
+            document.getElementById('currentTime').textContent = '00:00:00';
+            document.getElementById('remainingTime').textContent = '00:00:00';
+            
+            // Reset buttons
+            document.getElementById('startSession').disabled = false;
+            document.getElementById('startSession').textContent = 'Start Focus Session';
+            document.getElementById('pauseSession').disabled = true;
+            document.getElementById('pauseSession').textContent = 'Pause';
+            document.getElementById('stopSession').disabled = true;
+            document.getElementById('newSession').style.display = 'none';
+        }
+        
+        // Test API function
+        function testAPI() {
+            console.log('Testing API...');
+            alert('Testing API - check console');
+            
+            fetch('/api/health')
+            .then(response => {
+                console.log('Health API status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Health API data:', data);
+                alert('✅ API is working! Status: ' + data.status);
+                showAlert('✅ API test successful!', 'success');
+            })
+            .catch(error => {
+                console.error('Health API error:', error);
+                alert('❌ API test failed: ' + error.message);
+                showAlert('❌ API test failed', 'error');
+            });
+        }
+        
+        // Session management functions
+        function startSessionDirect() {
+            console.log('🎯 Starting session...');
+            alert('Starting session - check console for details');
+            
+            const duration = document.getElementById('studyDuration').value || 120;
+            const sessionName = document.getElementById('sessionName').value || 'Study Session';
+            
+            console.log('Duration:', duration, 'Name:', sessionName);
+            
+            // Show immediate feedback
+            const startBtn = document.getElementById('startSession');
+            startBtn.disabled = true;
+            startBtn.textContent = 'Starting...';
+            
+            console.log('Making API call to /api/session/start');
+            
+            fetch('/api/session/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    duration: parseInt(duration),
+                    name: sessionName
+                })
+            })
+            .then(response => {
+                console.log('API Response status:', response.status);
+                console.log('API Response ok:', response.ok);
+                
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error('Error response:', text);
+                        throw new Error('HTTP ' + response.status + ': ' + text);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('✅ Session API success:', data);
+                alert('Session API call successful!');
+                
+                sessionActive = true;
+                isPaused = false;
+                elapsedTime = 0;
+                totalDuration = parseInt(duration);
+                totalSeconds = totalDuration * 60;
+                
+                console.log('Session variables set:', {sessionActive, totalDuration, totalSeconds});
+                
+                // Hide setup card and update display
+                hideSetupCard();
+                updateSessionDisplay();
+                startSimpleTimer(totalSeconds);
+                updateButtonStates();
+                
+                // Auto-start camera
+                if (!cameraStream) {
+                    console.log('Auto-starting camera...');
+                    startCameraFeed();
+                }
+                
+                showAlert('✅ Session started successfully!', 'success');
+            })
+            .catch(error => {
+                console.error('❌ Session start error:', error);
+                alert('Session start error: ' + error.message);
+                
+                // Reset button
+                startBtn.disabled = false;
+                startBtn.textContent = 'Start Focus Session';
+                
+                showAlert('❌ Error starting session: ' + error.message, 'error');
+            });
+        }
+        
+        function pauseSessionDirect() {
+            console.log('⏸️ Pausing session...');
+            
+            fetch('/api/session/pause', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                isPaused = !isPaused;
+                
+                if (isPaused) {
+                    stopTimer();
+                    showAlert('⏸️ Session paused', 'warning');
+                } else {
+                    startSimpleTimer(totalSeconds);
+                    showAlert('▶️ Session resumed', 'success');
+                }
+                
+                updateSessionDisplay();
+                updateButtonStates();
+            })
+            .catch(error => {
+                console.error('❌ Pause error:', error);
+                showAlert('❌ Error pausing session', 'error');
+            });
+        }
+        
+        function stopSessionDirect() {
+            console.log('🛑 Stopping session...');
+            
+            if (confirm('Are you sure you want to stop the session?')) {
+                fetch('/api/session/stop', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    sessionActive = false;
+                    isPaused = false;
+                    stopTimer();
+                    
+                    updateSessionDisplay();
+                    updateButtonStates();
+                    
+                    showAlert('🛑 Session stopped', 'info');
+                })
+                .catch(error => {
+                    console.error('❌ Stop error:', error);
+                    showAlert('❌ Error stopping session', 'error');
+                });
+            }
+        }
+        
+        function updateSessionDisplay() {
+            if (sessionActive) {
+                // Update session info
+                const sessionName = document.getElementById('sessionName').value || 'Study Session';
+                const duration = totalDuration || 120;
+                
+                document.getElementById('currentSessionName').textContent = sessionName;
+                document.getElementById('sessionDuration').textContent = duration + ' minutes';
+                
+                const status = isPaused ? 'Paused' : 'Active';
+                const statusClass = isPaused ? 'status-paused' : 'status-active';
+                document.getElementById('sessionStatus').textContent = status;
+                document.getElementById('sessionStatus').className = statusClass;
+                
+                // Calculate and show progress
+                const progress = totalSeconds > 0 ? Math.round((elapsedTime / totalSeconds) * 100) : 0;
+                document.getElementById('sessionProgress').textContent = progress + '%';
+                
+            } else {
+                resetSessionDisplay();
+            }
+        }
+        
+        function updateButtonStates() {
+            const pauseBtn = document.getElementById('pauseSession');
+            const stopBtn = document.getElementById('stopSession');
+            const newBtn = document.getElementById('newSession');
+            
+            if (sessionActive) {
+                if (pauseBtn) {
+                    pauseBtn.disabled = false;
+                    pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+                }
+                if (stopBtn) stopBtn.disabled = false;
+                if (newBtn) newBtn.style.display = 'none';
+            } else {
+                if (pauseBtn) {
+                    pauseBtn.disabled = true;
+                    pauseBtn.textContent = 'Pause';
+                }
+                if (stopBtn) stopBtn.disabled = true;
+                if (newBtn) newBtn.style.display = 'inline-block';
+            }
+        }
+        
+        // Timer functions
+        function startSimpleTimer(totalSecs) {
+            window.sessionTimer = setInterval(() => {
+                if (!isPaused) {
+                    elapsedTime++;
+                    updateTimerDisplay();
+                    
+                    if (elapsedTime >= totalSecs) {
+                        completeSession();
+                    }
+                }
+            }, 1000);
+        }
+        
+        function stopTimer() {
+            if (window.sessionTimer) {
+                clearInterval(window.sessionTimer);
+                window.sessionTimer = null;
+            }
+        }
+        
+        function updateTimerDisplay() {
+            const hours = Math.floor(elapsedTime / 3600);
+            const minutes = Math.floor((elapsedTime % 3600) / 60);
+            const seconds = elapsedTime % 60;
+            
+            const elapsedTime_str = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            const remaining = Math.max(0, totalSeconds - elapsedTime);
+            const remHours = Math.floor(remaining / 3600);
+            const remMinutes = Math.floor((remaining % 3600) / 60);
+            const remSeconds = remaining % 60;
+            
+            const remainingTime_str = `${remHours.toString().padStart(2, '0')}:${remMinutes.toString().padStart(2, '0')}:${remSeconds.toString().padStart(2, '0')}`;
+            
+            document.getElementById('currentTime').textContent = elapsedTime_str;
+            document.getElementById('remainingTime').textContent = remainingTime_str;
+            
+            // Update progress
+            const progress = totalSeconds > 0 ? Math.round((elapsedTime / totalSeconds) * 100) : 0;
+            document.getElementById('sessionProgress').textContent = progress + '%';
+        }
+        
+        function completeSession() {
+            stopTimer();
+            sessionActive = false;
+            
+            fetch('/api/session/complete', { method: 'POST' })
+            .then(() => {
+                showAlert('🎉 Session completed successfully!', 'success');
+                updateSessionDisplay();
+                updateButtonStates();
+            })
+            .catch(error => {
+                console.error('Complete session error:', error);
+            });
+        }
+        
+        // Camera functions
+        async function startCameraFeed() {
+            console.log('📹 Starting camera...');
+            
+            try {
+                cameraVideo = document.getElementById('cameraFeed');
+                
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    } 
+                });
+                
+                cameraVideo.srcObject = cameraStream;
+                updateVisionStatus('cameraStatus', 'active');
+                startFaceDetection();
+                
+                console.log('✅ Camera started');
+                showAlert('📹 Camera started successfully!', 'success');
+                
+            } catch (error) {
+                console.error('❌ Camera error:', error);
+                updateVisionStatus('cameraStatus', 'error');
+                showAlert('❌ Camera error: ' + error.message, 'error');
+            }
+        }
+        
+        function stopCameraFeed() {
+            console.log('🛑 Stopping camera...');
+            
+            if (faceDetectionInterval) {
+                clearInterval(faceDetectionInterval);
+                faceDetectionInterval = null;
+            }
+            
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            
+            if (cameraVideo) {
+                cameraVideo.srcObject = null;
+            }
+            
+            updateVisionStatus('cameraStatus', 'error');
+            updateVisionStatus('faceDetection', 'error');
+            updateVisionStatus('postureStatus', 'error');
+            updateVisionStatus('attentionStatus', 'error');
+            
+            showAlert('🛑 Camera stopped', 'info');
+        }
+        
+        function startFaceDetection() {
+            if (!cameraVideo || !cameraStream) return;
+            
+            console.log('👤 Starting face detection...');
+            faceDetectionActive = true;
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 320;
+            canvas.height = 240;
+            
+            faceDetectionInterval = setInterval(() => {
+                if (!faceDetectionActive || !cameraVideo.videoWidth) return;
+                
+                try {
+                    ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const result = analyzeFaceInFrame(imageData);
+                    
+                    updateVisionStatus('faceDetection', result.faceDetected ? 'active' : 'warning');
+                    updateVisionStatus('postureStatus', result.goodPosture ? 'active' : 'warning');
+                    updateVisionStatus('attentionStatus', result.attentionLevel > 0.7 ? 'active' : 'warning');
+                    
+                    if (sessionActive && !result.goodPosture) {
+                        handleDistraction();
+                    }
+                    
+                } catch (error) {
+                    console.error('Face detection error:', error);
+                }
+            }, 2000);
+        }
+        
+        function analyzeFaceInFrame(imageData) {
+            const data = imageData.data;
+            const width = imageData.width;
+            const height = imageData.height;
+            
+            let brightPixels = 0;
+            let skinColorPixels = 0;
+            let centerBrightness = 0;
+            
+            const centerX = Math.floor(width / 2);
+            const centerY = Math.floor(height / 2);
+            const regionSize = 50;
+            
+            for (let y = centerY - regionSize; y < centerY + regionSize; y++) {
+                for (let x = centerX - regionSize; x < centerX + regionSize; x++) {
+                    if (x >= 0 && x < width && y >= 0 && y < height) {
+                        const i = (y * width + x) * 4;
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        
+                        const brightness = (r + g + b) / 3;
+                        centerBrightness += brightness;
+                        
+                        if (r > 95 && g > 40 && b > 20 && 
+                            Math.max(r, g, b) - Math.min(r, g, b) > 15 &&
+                            Math.abs(r - g) > 15 && r > g && r > b) {
+                            skinColorPixels++;
+                        }
+                        
+                        if (brightness > 100) {
+                            brightPixels++;
+                        }
+                    }
+                }
+            }
+            
+            const totalCenterPixels = (regionSize * 2) * (regionSize * 2);
+            const avgCenterBrightness = centerBrightness / totalCenterPixels;
+            const skinRatio = skinColorPixels / totalCenterPixels;
+            
+            const faceDetected = skinRatio > 0.1 && avgCenterBrightness > 80;
+            const goodPosture = faceDetected && avgCenterBrightness > 100 && skinRatio > 0.15;
+            const attentionLevel = Math.min(1.0, (skinRatio * 3 + avgCenterBrightness / 255) / 2);
+            
+            return { faceDetected, goodPosture, attentionLevel };
+        }
+        
+        function handleDistraction() {
+            const now = Date.now();
+            if (!window.lastDistractionAlert || now - window.lastDistractionAlert > 10000) {
+                window.lastDistractionAlert = now;
+                
+                console.log('⚠️ Distraction detected!');
+                showAlert('⚠️ Please return to study posture!', 'warning');
+                
+                if (sessionActive && !isPaused) {
+                    pauseSessionDirect();
+                }
+            }
+        }
+        
+        function updateVisionStatus(elementId, status) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.className = `indicator-dot ${status}`;
+            }
+        }
+        
+        function showAlert(message, type = 'info') {
+            console.log('Alert:', message, type);
+            
+            const alertsDiv = document.getElementById('currentAlerts');
+            if (!alertsDiv) return;
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert-item alert-${type}`;
+            alertDiv.innerHTML = `
+                <span>${message}</span>
+                <button onclick="this.parentElement.remove()" style="margin-left: auto; background: none; border: none; cursor: pointer; font-size: 18px;">×</button>
+            `;
+            
+            if (alertsDiv.children.length > 3) {
+                alertsDiv.innerHTML = '';
+            }
+            
+            alertsDiv.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                if (alertDiv.parentElement) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎯 FocusGuard Dashboard loaded!');
+            
+            setTimeout(() => {
+                showAlert('🎯 Dashboard ready! Set duration and click "Start Focus Session"', 'success');
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

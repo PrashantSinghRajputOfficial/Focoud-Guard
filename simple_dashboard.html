@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FocusGuard - Simple Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-warning { background: #ffc107; color: black; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        input { padding: 10px; margin: 5px; border: 1px solid #ddd; border-radius: 5px; }
+        .timer { font-size: 24px; font-weight: bold; color: #007bff; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .status-active { background: #d4edda; color: #155724; }
+        .status-paused { background: #fff3cd; color: #856404; }
+        .status-idle { background: #f8f9fa; color: #6c757d; }
+    </style>
+</head>
+<body>
+    <h1>🎯 FocusGuard Dashboard</h1>
+    
+    <div class="card">
+        <h2>Start Session</h2>
+        <input type="number" id="duration" value="60" placeholder="Duration (minutes)">
+        <input type="text" id="sessionName" value="Study Session" placeholder="Session Name">
+        <br><br>
+        <button class="btn btn-primary" onclick="startSession()">Start Session</button>
+        <button class="btn btn-warning" id="pauseBtn" onclick="pauseSession()" disabled>Pause</button>
+        <button class="btn btn-danger" id="stopBtn" onclick="stopSession()" disabled>Stop</button>
+    </div>
+    
+    <div class="card">
+        <h2>Current Session</h2>
+        <div class="timer" id="timer">00:00:00</div>
+        <div class="status status-idle" id="status">No active session</div>
+        <p><strong>Session:</strong> <span id="currentSession">None</span></p>
+    </div>
+    
+    <div class="card">
+        <h2>Debug</h2>
+        <button class="btn btn-primary" onclick="testButton()">Test Button</button>
+        <button class="btn btn-primary" onclick="testAPI()">Test API</button>
+        <div id="debug"></div>
+    </div>
+
+    <script>
+        let sessionActive = false;
+        let sessionTimer = null;
+        let elapsedSeconds = 0;
+        let totalSeconds = 0;
+        
+        function log(message) {
+            console.log(message);
+            document.getElementById('debug').innerHTML += '<p>' + message + '</p>';
+        }
+        
+        function testButton() {
+            log('✅ Button click working!');
+            alert('Button working!');
+        }
+        
+        function testAPI() {
+            log('Testing API...');
+            
+            fetch('/api/health')
+            .then(response => {
+                log('API Response: ' + response.status);
+                return response.json();
+            })
+            .then(data => {
+                log('✅ API working! Data: ' + JSON.stringify(data));
+                alert('API is working!');
+            })
+            .catch(error => {
+                log('❌ API Error: ' + error.message);
+                alert('API Error: ' + error.message);
+            });
+        }
+        
+        function startSession() {
+            log('Starting session...');
+            
+            const duration = parseInt(document.getElementById('duration').value) || 60;
+            const name = document.getElementById('sessionName').value || 'Study Session';
+            
+            log('Duration: ' + duration + ', Name: ' + name);
+            
+            fetch('/api/session/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    duration: duration,
+                    name: name
+                })
+            })
+            .then(response => {
+                log('Start session response: ' + response.status);
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                log('✅ Session started: ' + JSON.stringify(data));
+                
+                sessionActive = true;
+                elapsedSeconds = 0;
+                totalSeconds = duration * 60;
+                
+                updateUI();
+                startTimer();
+                
+                alert('Session started successfully!');
+            })
+            .catch(error => {
+                log('❌ Start session error: ' + error.message);
+                alert('Error: ' + error.message);
+            });
+        }
+        
+        function pauseSession() {
+            log('Pausing session...');
+            
+            fetch('/api/session/pause', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                log('✅ Session paused');
+                alert('Session paused!');
+            })
+            .catch(error => {
+                log('❌ Pause error: ' + error.message);
+                alert('Pause error: ' + error.message);
+            });
+        }
+        
+        function stopSession() {
+            log('Stopping session...');
+            
+            if (confirm('Stop session?')) {
+                fetch('/api/session/stop', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    log('✅ Session stopped');
+                    
+                    sessionActive = false;
+                    stopTimer();
+                    resetUI();
+                    
+                    alert('Session stopped!');
+                })
+                .catch(error => {
+                    log('❌ Stop error: ' + error.message);
+                    alert('Stop error: ' + error.message);
+                });
+            }
+        }
+        
+        function startTimer() {
+            sessionTimer = setInterval(() => {
+                elapsedSeconds++;
+                updateTimer();
+                
+                if (elapsedSeconds >= totalSeconds) {
+                    log('✅ Session completed!');
+                    stopSession();
+                }
+            }, 1000);
+        }
+        
+        function stopTimer() {
+            if (sessionTimer) {
+                clearInterval(sessionTimer);
+                sessionTimer = null;
+            }
+        }
+        
+        function updateTimer() {
+            const hours = Math.floor(elapsedSeconds / 3600);
+            const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+            const seconds = elapsedSeconds % 60;
+            
+            const timeStr = hours.toString().padStart(2, '0') + ':' + 
+                           minutes.toString().padStart(2, '0') + ':' + 
+                           seconds.toString().padStart(2, '0');
+            
+            document.getElementById('timer').textContent = timeStr;
+        }
+        
+        function updateUI() {
+            document.getElementById('currentSession').textContent = document.getElementById('sessionName').value;
+            document.getElementById('status').textContent = 'Active';
+            document.getElementById('status').className = 'status status-active';
+            
+            document.querySelector('.btn-primary').disabled = true;
+            document.getElementById('pauseBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = false;
+        }
+        
+        function resetUI() {
+            document.getElementById('currentSession').textContent = 'None';
+            document.getElementById('status').textContent = 'No active session';
+            document.getElementById('status').className = 'status status-idle';
+            document.getElementById('timer').textContent = '00:00:00';
+            
+            document.querySelector('.btn-primary').disabled = false;
+            document.getElementById('pauseBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = true;
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🎯 Simple Dashboard loaded!');
+        });
+    </script>
+</body>
+</html>

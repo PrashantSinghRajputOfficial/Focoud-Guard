@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FocusGuard Dashboard</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎯 FocusGuard Dashboard</h1>
+            <p class="subtitle">Vision-Based Study Time Enforcement System</p>
+        </header>
+
+        <div class="dashboard-grid" id="dashboardGrid">
+            <!-- Session Setup Card -->
+            <div class="card session-setup" id="sessionSetupCard">
+                <h2>📚 Study Session Setup</h2>
+                <div class="form-group">
+                    <label for="studyDuration">Study Duration (minutes):</label>
+                    <input type="number" id="studyDuration" min="1" max="480" value="120" placeholder="120">
+                </div>
+                <div class="form-group">
+                    <label for="sessionName">Session Name:</label>
+                    <input type="text" id="sessionName" placeholder="Mathematics Study" maxlength="50">
+                </div>
+                <button id="startSession" class="btn btn-primary" onclick="startSession()">Start Focus Session</button>
+            </div>
+
+            <!-- Current Session Status -->
+            <div class="card session-status" id="sessionStatusCard">
+                <h2>⏱️ Current Session</h2>
+                <div class="status-display">
+                    <div class="timer-display">
+                        <span id="currentTime">00:00:00</span>
+                        <span class="timer-label">Elapsed Time</span>
+                    </div>
+                    <div class="remaining-time">
+                        <span id="remainingTime">00:00:00</span>
+                        <span class="timer-label">Remaining Time</span>
+                    </div>
+                </div>
+                <div class="session-info">
+                    <p><strong>Session:</strong> <span id="currentSessionName">No active session</span></p>
+                    <p><strong>Status:</strong> <span id="sessionStatus" class="status-idle">Idle</span></p>
+                    <p><strong>Duration:</strong> <span id="sessionDuration">0 minutes</span></p>
+                    <p><strong>Progress:</strong> <span id="sessionProgress">0%</span></p>
+                </div>
+                <div class="session-controls">
+                    <button id="pauseSession" class="btn btn-warning" disabled onclick="pauseSession()">Pause</button>
+                    <button id="stopSession" class="btn btn-danger" disabled onclick="stopSession()">Stop Session</button>
+                    <button id="newSession" class="btn btn-primary" onclick="newSession()" style="display: none;">New Session</button>
+                </div>
+            </div>
+
+            <!-- Vision Status -->
+            <div class="card vision-status">
+                <h2>👁️ Vision Monitoring</h2>
+                <div class="vision-indicators">
+                    <div class="indicator">
+                        <span class="indicator-dot" id="cameraStatus"></span>
+                        <span>Camera Status</span>
+                    </div>
+                    <div class="indicator">
+                        <span class="indicator-dot" id="faceDetection"></span>
+                        <span>Face Detection</span>
+                    </div>
+                    <div class="indicator">
+                        <span class="indicator-dot" id="postureStatus"></span>
+                        <span>Study Posture</span>
+                    </div>
+                    <div class="indicator">
+                        <span class="indicator-dot" id="attentionStatus"></span>
+                        <span>Attention Level</span>
+                    </div>
+                </div>
+                <div class="camera-preview">
+                    <video id="cameraFeed" class="camera-feed" autoplay muted playsinline>
+                        Your browser does not support video
+                    </video>
+                    <div class="camera-controls">
+                        <button onclick="startCamera()" class="btn" style="background: #28a745; color: white; padding: 8px 16px; font-size: 12px;">Start Camera</button>
+                        <button onclick="stopCamera()" class="btn" style="background: #dc3545; color: white; padding: 8px 16px; font-size: 12px;">Stop Camera</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Today's Statistics -->
+            <div class="card statistics">
+                <h2>� Today's  Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-value" id="totalStudyTime">0h 0m</span>
+                        <span class="stat-label">Total Study Time</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="sessionsCompleted">0</span>
+                        <span class="stat-label">Sessions Completed</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="focusScore">0%</span>
+                        <span class="stat-label">Focus Score</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="totalDistractions">0</span>
+                        <span class="stat-label">Distractions</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Sessions -->
+            <div class="card recent-sessions">
+                <h2>📚 Recent Sessions</h2>
+                <div class="sessions-list" id="sessionsList">
+                    <div class="no-sessions">No recent sessions found</div>
+                </div>
+            </div>
+
+            <!-- Alerts & Notifications -->
+            <div class="card alerts">
+                <h2>🔔 Alerts & Notifications</h2>
+                <div class="alert-settings">
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="soundAlerts" checked>
+                            Sound Alerts
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="visualAlerts" checked>
+                            Visual Alerts
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label for="alertVolume">Alert Volume:</label>
+                        <input type="range" id="alertVolume" min="0" max="100" value="70">
+                        <span id="volumeValue">70%</span>
+                    </div>
+                </div>
+                <div class="current-alerts" id="currentAlerts">
+                    <!-- Dynamic alerts will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

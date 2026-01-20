@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FocusGuard - Camera Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        #videoElement {
+            width: 100%;
+            max-width: 640px;
+            height: 480px;
+            background: #000;
+            border-radius: 10px;
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status-success { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .status-warning { background: #fff3cd; color: #856404; }
+        
+        .indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .indicator-green { background: #28a745; }
+        .indicator-red { background: #dc3545; }
+        .indicator-yellow { background: #ffc107; }
+        
+        #debug {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 FocusGuard - Camera Setup & Test</h1>
+    
+    <div class="card">
+        <h2>📹 Camera Permission & Setup</h2>
+        <button class="btn btn-primary" onclick="requestCameraPermission()">Request Camera Permission</button>
+        <button class="btn btn-success" onclick="startCamera()" id="startBtn" disabled>Start Camera</button>
+        <button class="btn btn-danger" onclick="stopCamera()" id="stopBtn" disabled>Stop Camera</button>
+        
+        <div id="permissionStatus" class="status status-warning">
+            <span class="indicator indicator-yellow"></span>
+            Camera permission not requested yet
+        </div>
+    </div>
+    
+    <div class="card">
+        <h2>📺 Live Camera Feed</h2>
+        <video id="videoElement" autoplay muted playsinline>
+            Your browser does not support video element
+        </video>
+        
+        <div id="cameraStatus" class="status status-warning">
+            <span class="indicator indicator-yellow"></span>
+            Camera not started
+        </div>
+    </div>
+    
+    <div class="card">
+        <h2>🔍 Face Detection Test</h2>
+        <canvas id="canvasElement" width="640" height="480" style="display: none;"></canvas>
+        <button class="btn btn-primary" onclick="testFaceDetection()" id="faceTestBtn" disabled>Test Face Detection</button>
+        
+        <div id="faceStatus" class="status status-warning">
+            <span class="indicator indicator-yellow"></span>
+            Face detection not started
+        </div>
+        
+        <div id="faceResults"></div>
+    </div>
+    
+    <div class="card">
+        <h2>🐛 Debug Log</h2>
+        <button class="btn btn-primary" onclick="clearDebug()">Clear Log</button>
+        <div id="debug"></div>
+    </div>
+
+    <script>
+        let videoStream = null;
+        let video = null;
+        let canvas = null;
+        let ctx = null;
+        let faceDetectionInterval = null;
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const debugDiv = document.getElementById('debug');
+            const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+            debugDiv.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            debugDiv.scrollTop = debugDiv.scrollHeight;
+            console.log(message);
+        }
+        
+        function updateStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            const indicators = {
+                'success': 'indicator-green',
+                'error': 'indicator-red', 
+                'warning': 'indicator-yellow'
+            };
+            
+            element.className = `status status-${type}`;
+            element.innerHTML = `<span class="indicator ${indicators[type]}"></span>${message}`;
+        }
+        
+        async function requestCameraPermission() {
+            log('🎥 Requesting camera permission...');
+            
+            try {
+                // Check if browser supports getUserMedia
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Browser does not support camera access');
+                }
+                
+                // Request camera permission
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    } 
+                });
+                
+                // Stop the stream immediately (we just wanted permission)
+                stream.getTracks().forEach(track => track.stop());
+                
+                log('✅ Camera permission granted!', 'success');
+                updateStatus('permissionStatus', 'Camera permission granted', 'success');
+                
+                // Enable start button
+                document.getElementById('startBtn').disabled = false;
+                
+                return true;
+                
+            } catch (error) {
+                log('❌ Camera permission denied: ' + error.message, 'error');
+                updateStatus('permissionStatus', 'Camera permission denied: ' + error.message, 'error');
+                
+                // Show help message
+                if (error.name === 'NotAllowedError') {
+                    log('💡 Please allow camera access in browser settings', 'warning');
+                } else if (error.name === 'NotFoundError') {
+                    log('💡 No camera found on this device', 'error');
+                }
+                
+                return false;
+            }
+        }
+        
+        async function startCamera() {
+            log('🎬 Starting camera...');
+            
+            try {
+                video = document.getElementById('videoElement');
+                canvas = document.getElementById('canvasElement');
+                ctx = canvas.getContext('2d');
+                
+                // Get camera stream
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    } 
+                });
+                
+                // Set video source
+                video.srcObject = videoStream;
+                
+                // Wait for video to load
+                video.onloadedmetadata = () => {
+                    log('✅ Camera started successfully!', 'success');
+                    updateStatus('cameraStatus', 'Camera active and streaming', 'success');
+                    
+                    // Enable buttons
+                    document.getElementById('stopBtn').disabled = false;
+                    document.getElementById('faceTestBtn').disabled = false;
+                    document.getElementById('startBtn').disabled = true;
+                };
+                
+                video.onerror = (error) => {
+                    log('❌ Video error: ' + error.message, 'error');
+                    updateStatus('cameraStatus', 'Video error: ' + error.message, 'error');
+                };
+                
+            } catch (error) {
+                log('❌ Failed to start camera: ' + error.message, 'error');
+                updateStatus('cameraStatus', 'Failed to start camera: ' + error.message, 'error');
+            }
+        }
+        
+        function stopCamera() {
+            log('🛑 Stopping camera...');
+            
+            try {
+                // Stop face detection
+                if (faceDetectionInterval) {
+                    clearInterval(faceDetectionInterval);
+                    faceDetectionInterval = null;
+                }
+                
+                // Stop video stream
+                if (videoStream) {
+                    videoStream.getTracks().forEach(track => {
+                        track.stop();
+                        log('🔌 Stopped track: ' + track.kind);
+                    });
+                    videoStream = null;
+                }
+                
+                // Clear video element
+                if (video) {
+                    video.srcObject = null;
+                }
+                
+                log('✅ Camera stopped successfully', 'success');
+                updateStatus('cameraStatus', 'Camera stopped', 'warning');
+                updateStatus('faceStatus', 'Face detection stopped', 'warning');
+                
+                // Update buttons
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+                document.getElementById('faceTestBtn').disabled = true;
+                
+            } catch (error) {
+                log('❌ Error stopping camera: ' + error.message, 'error');
+            }
+        }
+        
+        function testFaceDetection() {
+            log('👤 Starting face detection test...');
+            
+            if (!video || !video.srcObject) {
+                log('❌ Camera not active', 'error');
+                return;
+            }
+            
+            updateStatus('faceStatus', 'Face detection active - analyzing...', 'success');
+            
+            // Simple face detection simulation (since we don't have OpenCV in browser)
+            faceDetectionInterval = setInterval(() => {
+                try {
+                    // Draw current frame to canvas
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    // Get image data
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    
+                    // Simple brightness-based "face detection" (mock)
+                    let brightPixels = 0;
+                    for (let i = 0; i < imageData.data.length; i += 4) {
+                        const brightness = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
+                        if (brightness > 100) brightPixels++;
+                    }
+                    
+                    const faceDetected = brightPixels > (imageData.data.length / 4) * 0.3;
+                    const confidence = Math.min(100, (brightPixels / (imageData.data.length / 4)) * 200);
+                    
+                    // Update results
+                    const resultsDiv = document.getElementById('faceResults');
+                    resultsDiv.innerHTML = `
+                        <p><strong>Face Detected:</strong> ${faceDetected ? '✅ Yes' : '❌ No'}</p>
+                        <p><strong>Confidence:</strong> ${confidence.toFixed(1)}%</p>
+                        <p><strong>Frame Size:</strong> ${video.videoWidth}x${video.videoHeight}</p>
+                        <p><strong>Last Update:</strong> ${new Date().toLocaleTimeString()}</p>
+                    `;
+                    
+                    if (faceDetected) {
+                        updateStatus('faceStatus', `Face detected with ${confidence.toFixed(1)}% confidence`, 'success');
+                    } else {
+                        updateStatus('faceStatus', 'No face detected - please position yourself in front of camera', 'warning');
+                    }
+                    
+                } catch (error) {
+                    log('❌ Face detection error: ' + error.message, 'error');
+                }
+            }, 1000); // Check every second
+            
+            log('✅ Face detection started', 'success');
+        }
+        
+        function clearDebug() {
+            document.getElementById('debug').innerHTML = '';
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🎯 FocusGuard Camera Test loaded');
+            log('📱 Browser: ' + navigator.userAgent);
+            log('🎥 Media devices supported: ' + (navigator.mediaDevices ? 'Yes' : 'No'));
+            
+            // Check for HTTPS (required for camera access)
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                log('⚠️ Warning: Camera access requires HTTPS or localhost', 'warning');
+            }
+        });
+    </script>
+</body>
+</html>

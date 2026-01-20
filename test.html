@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test FocusGuard</title>
+</head>
+<body>
+    <h1>FocusGuard Test</h1>
+    
+    <input type="number" id="duration" value="60" placeholder="Duration in minutes">
+    <input type="text" id="name" value="Test Session" placeholder="Session name">
+    <button onclick="startSession()">Start Session</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        function startSession() {
+            console.log('Starting session...');
+            
+            const duration = document.getElementById('duration').value;
+            const name = document.getElementById('name').value;
+            
+            fetch('http://127.0.0.1:5000/api/session/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    duration: parseInt(duration),
+                    name: name
+                })
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Success:', data);
+                document.getElementById('result').innerHTML = '<p style="color: green;">Session started successfully!</p>';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
+            });
+        }
+    </script>
+</body>
+</html>
