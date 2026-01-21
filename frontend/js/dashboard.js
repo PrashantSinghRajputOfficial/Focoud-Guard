@@ -255,9 +255,11 @@ function stopSession() {
         isPaused = false;
         stopTimer();
         
-        // Stop continuous alerts
-        stopContinuousAlert();
+        // Stop all continuous alerts
+        stopAllContinuousAlerts();
         window.lastDistractionAlert = null;
+        window.lastFaceDetectionAlert = null;
+        window.lastPostureAlert = null;
         
         // Reset display
         resetSessionDisplay();
@@ -282,9 +284,11 @@ function newSession() {
         sessionTimer = null;
     }
     
-    // Stop continuous alerts
-    stopContinuousAlert();
+    // Stop all continuous alerts
+    stopAllContinuousAlerts();
     window.lastDistractionAlert = null;
+    window.lastFaceDetectionAlert = null;
+    window.lastPostureAlert = null;
     
     // Show setup card
     showSetupCard();
@@ -305,9 +309,11 @@ function completeSession() {
     stopTimer();
     sessionActive = false;
     
-    // Stop continuous alerts
-    stopContinuousAlert();
+    // Stop all continuous alerts
+    stopAllContinuousAlerts();
     window.lastDistractionAlert = null;
+    window.lastFaceDetectionAlert = null;
+    window.lastPostureAlert = null;
     
     // Calculate session statistics
     currentSessionData.endTime = new Date();
@@ -458,18 +464,26 @@ function startFaceDetection() {
             // Analyze frame for face detection
             const result = analyzeFaceInFrame(imageData);
             
-            // Update vision indicators
+            // Update vision indicators and provide specific voice alerts
             updateVisionStatus('faceDetection', result.faceDetected ? 'active' : 'warning');
             updateVisionStatus('postureStatus', result.goodPosture ? 'active' : 'warning');
             updateVisionStatus('attentionStatus', result.attentionLevel > 0.7 ? 'active' : 'warning');
             
-            // Handle distraction during active session
-            if (sessionActive && !result.goodPosture && !isPaused) {
-                handleDistraction();
+            // Debug logging
+            console.log('Face Detection:', result.faceDetected, 'Good Posture:', result.goodPosture, 'Session Active:', sessionActive, 'Is Paused:', isPaused);
+            
+            // Specific alerts for different detection issues
+            if (sessionActive && !isPaused) {
+                if (!result.faceDetected) {
+                    handleFaceDetectionLost();
+                } else if (!result.goodPosture) {
+                    handlePostureLost();
+                }
             }
             
             // Handle return to good posture during paused session
-            if (sessionActive && result.goodPosture && isPaused && window.lastDistractionAlert) {
+            if (sessionActive && result.goodPosture && result.faceDetected && isPaused && (window.lastFaceDetectionAlert || window.lastPostureAlert)) {
+                console.log('🔄 Attempting to resume session - conditions met');
                 handleGoodPosture();
             }
             
@@ -524,8 +538,11 @@ function analyzeFaceInFrame(imageData) {
     
     // Determine face detection and posture
     const faceDetected = skinRatio > 0.1 && avgCenterBrightness > 80;
-    const goodPosture = faceDetected && avgCenterBrightness > 100 && skinRatio > 0.15;
+    const goodPosture = faceDetected && avgCenterBrightness > 90 && skinRatio > 0.12; // Made more lenient
     const attentionLevel = Math.min(1.0, (skinRatio * 3 + avgCenterBrightness / 255) / 2);
+    
+    // Debug logging for face detection
+    console.log('Face Analysis - Skin Ratio:', skinRatio.toFixed(3), 'Brightness:', avgCenterBrightness.toFixed(1), 'Face:', faceDetected, 'Posture:', goodPosture);
     
     return {
         faceDetected,
@@ -534,38 +551,135 @@ function analyzeFaceInFrame(imageData) {
     };
 }
 
-function handleDistraction() {
-    // Throttle distraction alerts (once every 10 seconds)
+function handleFaceDetectionLost() {
+    // Throttle face detection alerts (once every 8 seconds)
     const now = Date.now();
-    if (!window.lastDistractionAlert || now - window.lastDistractionAlert > 10000) {
-        window.lastDistractionAlert = now;
+    if (!window.lastFaceDetectionAlert || now - window.lastFaceDetectionAlert > 8000) {
+        window.lastFaceDetectionAlert = now;
         
         // Track distraction
         currentSessionData.distractions++;
         
-        console.log('⚠️ Distraction detected - User left study position!');
-        showAlert('⚠️ Please return to study posture! Session paused.', 'warning');
+        console.log('❌ Face detection lost!');
+        showAlert('❌ Face detection lost! Please position yourself in front of the camera.', 'error');
         
-        // Auto-pause session when user leaves study position
+        // Auto-pause session
         if (sessionActive && !isPaused) {
-            pauseSession();
+            isPaused = true;
+            document.getElementById('sessionStatus').textContent = 'Paused';
+            document.getElementById('sessionStatus').className = 'status-paused';
+            updateButtons();
         }
         
-        // Start continuous alert sound
-        startContinuousAlert();
+        // Start continuous face detection alerts
+        startContinuousFaceAlert();
     }
 }
 
+function handlePostureLost() {
+    // Throttle posture alerts (once every 10 seconds)
+    const now = Date.now();
+    if (!window.lastPostureAlert || now - window.lastPostureAlert > 10000) {
+        window.lastPostureAlert = now;
+        
+        // Track distraction
+        currentSessionData.distractions++;
+        
+        console.log('⚠️ Study posture lost!');
+        showAlert('⚠️ Study posture lost! Please return to your study position.', 'warning');
+        
+        // Auto-pause session
+        if (sessionActive && !isPaused) {
+            isPaused = true;
+            document.getElementById('sessionStatus').textContent = 'Paused';
+            document.getElementById('sessionStatus').className = 'status-paused';
+            updateButtons();
+        }
+        
+        // Start continuous posture alerts
+        startContinuousPostureAlert();
+    }
+}
+
+function handleDistraction() {
+    // This is now handled by more specific functions above
+    handlePostureLost();
+}
+
 function handleGoodPosture() {
+    console.log('🔍 handleGoodPosture called');
+    console.log('Session Active:', sessionActive);
+    console.log('Is Paused:', isPaused);
+    console.log('Face Alert Flag:', window.lastFaceDetectionAlert);
+    console.log('Posture Alert Flag:', window.lastPostureAlert);
+    
     // Resume session when user returns to good posture
-    if (sessionActive && isPaused && window.lastDistractionAlert) {
+    if (sessionActive && isPaused && (window.lastFaceDetectionAlert || window.lastPostureAlert)) {
         console.log('✅ Good posture detected - Resuming session');
         showAlert('✅ Good posture detected! Session resumed.', 'success');
-        pauseSession(); // This will toggle from paused to active
-        window.lastDistractionAlert = null; // Reset distraction flag
         
-        // Stop continuous alert sound
-        stopContinuousAlert();
+        // Resume session (toggle from paused to active)
+        isPaused = false;
+        document.getElementById('sessionStatus').textContent = 'Active';
+        document.getElementById('sessionStatus').className = 'status-active';
+        updateButtons();
+        
+        // Clear distraction flags
+        window.lastFaceDetectionAlert = null;
+        window.lastPostureAlert = null;
+        window.lastDistractionAlert = null;
+        
+        // Stop all continuous alerts
+        stopAllContinuousAlerts();
+    } else {
+        console.log('❌ Resume conditions not met');
+    }
+}
+
+function startContinuousFaceAlert() {
+    stopAllContinuousAlerts();
+    
+    const soundEnabled = document.getElementById('soundAlerts');
+    if (!soundEnabled || !soundEnabled.checked) return;
+    
+    console.log('🔊 Starting continuous face detection alerts...');
+    
+    continuousAlertInterval = setInterval(() => {
+        if (sessionActive && isPaused && window.lastFaceDetectionAlert) {
+            speakText("Face detection lost. Please position yourself in front of the camera.");
+        } else {
+            stopAllContinuousAlerts();
+        }
+    }, 6000);
+}
+
+function startContinuousPostureAlert() {
+    stopAllContinuousAlerts();
+    
+    const soundEnabled = document.getElementById('soundAlerts');
+    if (!soundEnabled || !soundEnabled.checked) return;
+    
+    console.log('🔊 Starting continuous posture alerts...');
+    
+    continuousAlertInterval = setInterval(() => {
+        if (sessionActive && isPaused && window.lastPostureAlert) {
+            speakText("Study position lost. Please return to your study position.");
+        } else {
+            stopAllContinuousAlerts();
+        }
+    }, 5000);
+}
+
+function stopAllContinuousAlerts() {
+    if (continuousAlertInterval) {
+        clearInterval(continuousAlertInterval);
+        continuousAlertInterval = null;
+        console.log('🔇 All continuous alerts stopped');
+    }
+    
+    // Stop any ongoing speech
+    if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
     }
 }
 
@@ -610,34 +724,13 @@ function playVolumePreview() {
 }
 
 function startContinuousAlert() {
-    // Stop any existing continuous alert
-    stopContinuousAlert();
-    
-    // Check if sound alerts are enabled
-    const soundEnabled = document.getElementById('soundAlerts');
-    if (!soundEnabled || !soundEnabled.checked) {
-        return;
-    }
-    
-    console.log('🔊 Starting continuous alert...');
-    
-    // Play alert sound every 3 seconds while user is away
-    continuousAlertInterval = setInterval(() => {
-        if (sessionActive && isPaused && window.lastDistractionAlert) {
-            playAlertSound('warning');
-        } else {
-            // Stop if conditions no longer met
-            stopContinuousAlert();
-        }
-    }, 3000);
+    // This function is now replaced by more specific alert functions
+    startContinuousPostureAlert();
 }
 
 function stopContinuousAlert() {
-    if (continuousAlertInterval) {
-        clearInterval(continuousAlertInterval);
-        continuousAlertInterval = null;
-        console.log('🔇 Continuous alert stopped');
-    }
+    // This function is now replaced by stopAllContinuousAlerts
+    stopAllContinuousAlerts();
 }
 
 function playAlertSound(type = 'info') {
@@ -647,6 +740,110 @@ function playAlertSound(type = 'info') {
         return;
     }
     
+    // Only use voice for specific alert types, beep for others
+    if (type === 'warning' || type === 'error') {
+        let message = '';
+        
+        switch(type) {
+            case 'warning':
+                message = 'Study position lost. Please return to your study position.';
+                break;
+            case 'error':
+                message = 'Face detection lost. Please position yourself in front of the camera.';
+                break;
+        }
+        
+        speakText(message);
+    } else {
+        // Use beep sound for success and info alerts
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Different frequencies for different alert types
+            let frequency = 600; // Default
+            let duration = 0.3;
+            
+            switch(type) {
+                case 'success':
+                    frequency = 800;
+                    duration = 0.2;
+                    break;
+                case 'info':
+                    frequency = 600;
+                    duration = 0.3;
+                    break;
+            }
+            
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            
+            // Get volume from slider
+            const volumeSlider = document.getElementById('alertVolume');
+            const volume = volumeSlider ? (volumeSlider.value / 100) * 0.3 : 0.3;
+            gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+            
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + duration);
+            
+        } catch (error) {
+            console.log('Audio not available:', error);
+        }
+    }
+}
+
+function speakText(text, volumeOverride = null) {
+    try {
+        // Check if browser supports speech synthesis
+        if (!window.speechSynthesis) {
+            console.log('Speech synthesis not supported');
+            return;
+        }
+        
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+        
+        // Create speech utterance
+        const utterance = new SpeechSynthesisUtterance(text);
+        
+        // Get volume from slider or use override
+        const volumeSlider = document.getElementById('alertVolume');
+        const volume = volumeOverride || (volumeSlider ? volumeSlider.value / 100 : 0.7);
+        
+        // Configure voice settings
+        utterance.volume = Math.min(1.0, volume);
+        utterance.rate = 1.0; // Normal speed
+        utterance.pitch = 1.0; // Normal pitch
+        
+        // Try to use a clear English voice
+        const voices = window.speechSynthesis.getVoices();
+        const englishVoice = voices.find(voice => 
+            voice.lang.startsWith('en') && 
+            (voice.name.includes('Google') || voice.name.includes('Microsoft') || voice.name.includes('Alex'))
+        ) || voices.find(voice => voice.lang.startsWith('en'));
+        
+        if (englishVoice) {
+            utterance.voice = englishVoice;
+        }
+        
+        // Speak the text
+        window.speechSynthesis.speak(utterance);
+        
+        console.log('🗣️ Speaking:', text);
+        
+    } catch (error) {
+        console.log('Speech synthesis error:', error);
+        // Fallback to beep sound if speech fails
+        playBeepSound();
+    }
+}
+
+function playBeepSound() {
+    // Fallback beep sound if speech synthesis fails
     try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const oscillator = audioContext.createOscillator();
@@ -655,39 +852,15 @@ function playAlertSound(type = 'info') {
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
         
-        // Different frequencies for different alert types
-        let frequency = 600; // Default
-        let duration = 0.3;
+        oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
         
-        switch(type) {
-            case 'success':
-                frequency = 800;
-                duration = 0.2;
-                break;
-            case 'warning':
-                frequency = 400;
-                duration = 0.5;
-                break;
-            case 'error':
-                frequency = 300;
-                duration = 0.7;
-                break;
-            case 'info':
-                frequency = 600;
-                duration = 0.3;
-                break;
-        }
-        
-        oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
-        
-        // Get volume from slider
         const volumeSlider = document.getElementById('alertVolume');
         const volume = volumeSlider ? (volumeSlider.value / 100) * 0.3 : 0.3;
         gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
         
         oscillator.start();
-        oscillator.stop(audioContext.currentTime + duration);
+        oscillator.stop(audioContext.currentTime + 0.3);
         
     } catch (error) {
         console.log('Audio not available:', error);
@@ -765,6 +938,47 @@ function showAlert(message, type = 'info') {
             alertDiv.remove();
         }
     }, 5000);
+}
+
+function playCompletionSound() {
+    // Check if sound alerts are enabled
+    const soundEnabled = document.getElementById('soundAlerts');
+    if (!soundEnabled || !soundEnabled.checked) {
+        return;
+    }
+    
+    try {
+        // Create completion melody
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const volumeSlider = document.getElementById('alertVolume');
+        const volume = volumeSlider ? (volumeSlider.value / 100) * 0.3 : 0.3;
+        
+        // Play a pleasant completion melody
+        const notes = [
+            { freq: 523, time: 0 },    // C5
+            { freq: 659, time: 0.2 },  // E5
+            { freq: 784, time: 0.4 },  // G5
+            { freq: 1047, time: 0.6 }  // C6
+        ];
+        
+        notes.forEach(note => {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(note.freq, audioContext.currentTime + note.time);
+            gainNode.gain.setValueAtTime(volume, audioContext.currentTime + note.time);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + note.time + 0.3);
+            
+            oscillator.start(audioContext.currentTime + note.time);
+            oscillator.stop(audioContext.currentTime + note.time + 0.3);
+        });
+        
+    } catch (error) {
+        console.log('Audio not available:', error);
+    }
 }
 
 // Statistics and Session Management Functions
